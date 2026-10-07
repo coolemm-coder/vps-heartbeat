@@ -1,0 +1,35 @@
+name: vps-heartbeat
+# External dead-man for the n8n VPS (Beget SPb). healthchecks.io blocks Russian IPs,
+# so the server cannot ping it itself; this runner checks /healthz from outside and pings.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+    - cron: "0 6 1 * *"   # monthly keepalive: GitHub disables schedules after 60 idle days
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  ping:
+    if: github.event.schedule != '0 6 1 * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check n8n healthz and ping healthchecks
+        env:
+          HC: ${{ secrets.HC_PING_VPS }}
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 30 --retry 2 https://automation.landingpro.by/healthz || true)
+          echo "healthz=$code"
+          if [ "$code" = "200" ]; then
+            curl -fsS -m 10 --retry 3 "$HC" >/dev/null
+          else
+            curl -fsS -m 10 --retry 3 --data-raw "n8n healthz http=$code (checked from GitHub Actions)" "$HC/fail" >/dev/null
+          fi
+  keepalive:
+    if: github.event.schedule == '0 6 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          git config user.name "vps-heartbeat"; git config user.email "actions@users.noreply.github.com"
+          git commit --allow-empty -m "keepalive $(date -u +%F)" && git push
