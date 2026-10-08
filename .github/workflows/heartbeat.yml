@@ -25,6 +25,27 @@ jobs:
           else
             curl -fsS -m 10 --retry 3 --data-raw "n8n healthz http=$code (checked from GitHub Actions)" "$HC/fail" >/dev/null
           fi
+      # Kronberg (cargo.kronberg.by, same server): its beats are read from /healthz,
+      # because healthchecks.io refuses the server's Russian IP.
+      - name: Kronberg bot, receiver, backup → healthchecks
+        if: always()
+        env:
+          TOKEN: ${{ secrets.KR_HEALTHZ_TOKEN }}
+          HC_search_bot: ${{ secrets.KR_HC_SEARCH_BOT }}
+          HC_receiver: ${{ secrets.KR_HC_RECEIVER }}
+          HC_backup: ${{ secrets.KR_HC_BACKUP }}
+        run: |
+          for name in search_bot receiver backup; do
+            var="HC_$name"; hc="${!var}"
+            why=$(curl -s -m 30 --retry 2 -o - -w '' "https://cargo.kronberg.by/healthz/$name?k=$TOKEN" || true)
+            code=$(curl -s -o /dev/null -m 30 --retry 2 -w '%{http_code}' "https://cargo.kronberg.by/healthz/$name?k=$TOKEN" || true)
+            echo "$name=$code"
+            if [ "$code" = "200" ]; then
+              curl -fsS -m 10 --retry 3 "$hc" >/dev/null
+            else
+              curl -fsS -m 10 --retry 3 --data-raw "$name http=$code: $why (GitHub Actions)" "$hc/fail" >/dev/null
+            fi
+          done
   keepalive:
     if: github.event.schedule == '0 6 1 * *'
     runs-on: ubuntu-latest
