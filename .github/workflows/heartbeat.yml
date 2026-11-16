@@ -27,16 +27,18 @@ jobs:
           fi
       # Kronberg (cargo.kronberg.by, same server): its beats are read from /healthz,
       # because healthchecks.io refuses the server's Russian IP.
-      - name: Kronberg bot, receiver, backup → healthchecks
+      - name: Kronberg bot, receiver, backup, fleet board → healthchecks
         if: always()
         env:
           TOKEN: ${{ secrets.KR_HEALTHZ_TOKEN }}
           HC_search_bot: ${{ secrets.KR_HC_SEARCH_BOT }}
           HC_receiver: ${{ secrets.KR_HC_RECEIVER }}
           HC_backup: ${{ secrets.KR_HC_BACKUP }}
+          HC_fleet_board: ${{ secrets.KR_HC_FLEET_BOARD }}
         run: |
-          for name in search_bot receiver backup; do
+          for name in search_bot receiver backup fleet_board; do
             var="HC_$name"; hc="${!var}"
+            if [ -z "$hc" ]; then echo "$name: no healthchecks URL yet, skipped"; continue; fi
             why=$(curl -s -m 30 --retry 2 -o - -w '' "https://cargo.kronberg.by/healthz/$name?k=$TOKEN" || true)
             code=$(curl -s -o /dev/null -m 30 --retry 2 -w '%{http_code}' "https://cargo.kronberg.by/healthz/$name?k=$TOKEN" || true)
             echo "$name=$code"
